@@ -1,0 +1,50 @@
+name: Katalog Meta - kafelki AMP
+
+on:
+  schedule:
+    - cron: "7 3 * * *"   # codziennie ~4:07 PL zimą (5:07 latem)
+  push:
+    paths:
+      - meta_katalog.py
+      - assets/**
+      - .github/workflows/katalog.yml
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Renderuj wszystkie kafelki od nowa"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: katalog
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.u2net
+          key: u2net-isnet
+      - name: Biblioteki
+        run: pip install pillow numpy scipy rembg onnxruntime
+      - name: Kafelki i feed
+        run: python meta_katalog.py
+        env:
+          FORCE: ${{ inputs.force && '1' || '0' }}
+      - name: Zapis zmian
+        run: |
+          git config user.name "tk-katalog-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A t cuts feed.csv
+          git diff --cached --quiet || git commit -m "Katalog Meta: aktualizacja $(date -u +%F)"
+          git push
