@@ -206,7 +206,7 @@ def main():
             disc = old > price + 0.009
             rows.append({
                 'id': v['id'], 'item_group_id': p['id'],
-                'title': f"{p['title']} - rozmiar {v.get('option1') or v['title']}"[:150],
+                'title': p['title'][:150],
                 'description': plain(p.get('body_html')) or p['title'],
                 'availability': 'in stock',
                 'condition': 'new',
