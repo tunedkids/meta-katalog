@@ -350,7 +350,7 @@ def main_best():
 # Jeden katalog w kampanii AMP, zestawy produktow po custom_label_2 = amp / rope / best.
 # Produkt, ktory juz jest w innym zestawie, dostaje id z prefiksem (np. b46832958406811),
 # zeby mogl miec inne tlo; oryginalne id zostaje przy pierwszym zestawie (piksel dalej pasuje).
-COMBINE = env('COMBINE', '0') == '1'
+COMBINE = env('COMBINE', '1') == '1'
 ROPE_COL = env('ROPE_COL', 'rope-laces')
 DESIGN3 = 'r1'
 BG_URLS = {'rope': env('BG_ROPE', 'https://cdn.shopify.com/s/files/1/0672/8604/0731/files/tk-meta-tlo-rope.jpg')}
