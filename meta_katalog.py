@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Tuned Kids - katalog Meta z wlasnymi kafelkami (Air Max Plus, meskie rozmiary).
-Claude, 6.11.2026.
+Claude, 6.11.2026. v5 12.11: wspolny katalog AMP + Rope Laces + Bestsellery (COMBINE=1), custom_label_2.
 
 Co robi (codziennie w GitHub Actions):
 1. Pobiera publiczny katalog sklepu (tunedkids.pl/collections/<kolekcja>/products.json).
@@ -169,10 +169,18 @@ def tile(cut, name, price, old):
     return bg
 
 
-def tile2(cut, price, old, shoe=True):
-    global _bg
-    if _bg is None: _bg = Image.open(os.path.join(A_DIR, 'tlo.jpg')).convert('RGB').resize((S, S), Image.LANCZOS)
-    bg = _bg.copy()
+_bgs = {}
+def bg_img(name):
+    """tlo kafelka: 'amp' = assets/tlo.jpg, inne = URL z Shopify Files (BG_<NAME>)"""
+    if name not in _bgs:
+        if name == 'amp': im = Image.open(os.path.join(A_DIR, 'tlo.jpg'))
+        else: im = Image.open(io.BytesIO(get(BG_URLS[name])))
+        _bgs[name] = im.convert('RGB').resize((S, S), Image.LANCZOS)
+    return _bgs[name].copy()
+
+
+def tile2(cut, price, old, shoe=True, bgname='amp'):
+    bg = bg_img(bgname)
     sh = cut.crop(cut.split()[3].point(lambda v: 255 if v > 60 else 0).getbbox())
     if shoe: maxw, maxh, floor = 900, 480, 700
     else: maxw, maxh, floor = 760, 640, 800
@@ -262,7 +270,14 @@ def main():
                 'google_product_category': 'Apparel & Accessories > Shoes',
                 'product_type': p.get('product_type') or 'Air Max Plus',
                 'custom_label_0': ('-%d%%' % round((1 - price / old) * 100)) if disc else '',
+                'custom_label_1': '', 'custom_label_2': 'amp',
             })
+    if COMBINE:
+        taken = {str(r['id']) for r in rows}
+        rope = build(ROPE_COL, 'tr', 'rope', DESIGN3, 'rope', taken, size_filter=False)
+        taken |= {re.sub(r'^[a-z]', '', str(r['id'])) for r in rope}
+        best = build(BEST_COL, 'tb', 'best', DESIGN2, 'amp', taken, size_filter=True)
+        rows += rope + best
     removed = 0
     for f in os.listdir(TILES):
         if f.endswith('.jpg') and f not in used: os.remove(os.path.join(TILES, f)); removed += 1
@@ -329,6 +344,69 @@ def main_best():
     with open(os.path.join(ROOT, 'feed_best.csv'), 'w', newline='', encoding='utf-8') as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0].keys())); w.writeheader(); w.writerows(rows)
     print('bestsellery: warianty %d | nowe kafelki %d | kafelki %d' % (len(rows), made, len(used)))
+
+
+# ---------- wspolny katalog: AMP + Rope Laces + Bestsellery (Kuba 12.11, wieczor) ----------
+# Jeden katalog w kampanii AMP, zestawy produktow po custom_label_2 = amp / rope / best.
+# Produkt, ktory juz jest w innym zestawie, dostaje id z prefiksem (np. b46832958406811),
+# zeby mogl miec inne tlo; oryginalne id zostaje przy pierwszym zestawie (piksel dalej pasuje).
+COMBINE = env('COMBINE', '0') == '1'
+ROPE_COL = env('ROPE_COL', 'rope-laces')
+DESIGN3 = 'r1'
+BG_URLS = {'rope': env('BG_ROPE', 'https://cdn.shopify.com/s/files/1/0672/8604/0731/files/tk-meta-tlo-rope.jpg')}
+
+
+def build(col, sub, label, design, bgname, taken, size_filter=True):
+    d_ = os.path.join(ROOT, sub); os.makedirs(d_, exist_ok=True)
+    P = [p for p in products(col) if not EXCL.search(p['title'])]
+    print(label, 'produkty:', len(P))
+    rows, used, made = [], set(), 0
+    for p in P:
+        try:
+            cut = cutout(p)
+        except Exception as ex:
+            print('  BLAD wycinania', p['title'], ex); continue
+        shoe = is_shoe(p)
+        vs = []
+        for v in p['variants']:
+            s_ = size_eu(v) if shoe else 0
+            if shoe and size_filter and (s_ is None or s_ < MIN_SIZE): continue
+            if not v.get('available'): continue
+            vs.append((s_, v))
+        if not vs: continue
+        _, vmin = min(vs, key=lambda x: (float(x[1]['price']), -float(x[1].get('compare_at_price') or 0)))
+        tprice = float(vmin['price']); told = float(vmin.get('compare_at_price') or 0)
+        key = f"{p['id']}_{vmin['price']}_{vmin.get('compare_at_price') or '0'}"
+        h = hashlib.md5((key + design).encode()).hexdigest()[:8]
+        fn = f"{p['id']}-{h}.jpg"; used.add(fn)
+        path = os.path.join(d_, fn)
+        if FORCE or not os.path.exists(path):
+            tile2(cut, tprice, told, shoe, bgname).save(path, quality=88, optimize=True, progressive=True); made += 1
+        for s_, v in vs:
+            price = float(v['price']); old = float(v.get('compare_at_price') or 0)
+            disc = old > price + 0.009
+            vid = str(v['id'])
+            rows.append({
+                'id': (label[0] + vid) if vid in taken else vid, 'item_group_id': p['id'],
+                'title': p['title'][:150],
+                'description': plain(p.get('body_html')) or p['title'],
+                'availability': 'in stock', 'condition': 'new',
+                'price': '%.2f PLN' % (old if disc else price),
+                'sale_price': ('%.2f PLN' % price) if disc else '',
+                'link': f"{SHOP}/products/{p['handle']}?variant={v['id']}",
+                'image_link': f'{BASE_URL}/{sub}/{fn}',
+                'brand': p.get('vendor') or 'Nike',
+                'size': ('%g' % s_) if shoe else (v.get('option1') or v.get('title') or ''),
+                'gender': ('male' if size_filter else 'unisex') if shoe else 'unisex', 'age_group': 'adult',
+                'google_product_category': 'Apparel & Accessories > Shoes' if shoe else 'Apparel & Accessories > Clothing',
+                'product_type': p.get('product_type') or '',
+                'custom_label_0': ('-%d%%' % round((1 - price / old) * 100)) if disc else '',
+                'custom_label_1': 'bestsellery' if label == 'best' else '', 'custom_label_2': label,
+            })
+    for f in os.listdir(d_):
+        if f.endswith('.jpg') and f not in used: os.remove(os.path.join(d_, f))
+    print('%s: warianty %d | nowe kafelki %d | kafelki %d' % (label, len(rows), made, len(used)))
+    return rows
 
 
 if __name__ == '__main__':
