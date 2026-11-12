@@ -45,6 +45,6 @@ jobs:
         run: |
           git config user.name "tk-katalog-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add -A t tb cuts feed.csv feed_best.csv
+          git add -A t tb tr cuts feed.csv feed_best.csv
           git diff --cached --quiet || git commit -m "Katalog Meta: aktualizacja $(date -u +%F)"
           git pull --rebase -X theirs || true; git push
