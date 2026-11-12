@@ -24,7 +24,7 @@ A_DIR = os.path.join(ROOT, 'assets')
 CUTS = os.path.join(ROOT, 'cuts')
 TILES = os.path.join(ROOT, 't')
 SHOP = 'https://tunedkids.pl'
-DESIGN = 'v2'  # zmiana wymusza nowe nazwy plikow (Meta pobierze nowe obrazy)
+DESIGN = 'v3'  # zmiana wymusza nowe nazwy plikow (Meta pobierze nowe obrazy)
 
 env = lambda k, d='': os.environ.get(k, d) or d
 COLLECTION = env('COLLECTION', 'air-max-plus')
@@ -82,7 +82,8 @@ def size_eu(v):
 # ---------- wycinanie ----------
 _sess = None
 def cutout(p):
-    fn = os.path.join(CUTS, f"{p['id']}.png")
+    # v2 (12.11): dziury, przez ktore widac tlo zdjecia (np. kolumny Shox), zostaja przezroczyste
+    fn = os.path.join(CUTS, f"v2_{p['id']}.png")
     if os.path.exists(fn): return Image.open(fn).convert('RGBA')
     global _sess
     from rembg import remove, new_session
@@ -91,8 +92,22 @@ def cutout(p):
     src = p['images'][0]['src']; src += ('&' if '?' in src else '?') + 'width=1400'
     o = Image.open(io.BytesIO(get(src))).convert('RGB')
     c = remove(o, session=_sess)
-    a = np.array(c.split()[3]); fl = ndimage.binary_fill_holes(a > 25)
-    na = np.where(ndimage.binary_erosion(fl, iterations=4), 255, a).astype('uint8')
+    a = np.array(c.split()[3]); rgb = np.array(o).astype(int)
+    solid = a > 25
+    fl = ndimage.binary_fill_holes(solid)
+    holes = fl & ~solid
+    h, w = a.shape; k = max(4, min(h, w) // 40)
+    corners = np.concatenate([rgb[:k, :k].reshape(-1, 3), rgb[:k, -k:].reshape(-1, 3), rgb[-k:, :k].reshape(-1, 3), rgb[-k:, -k:].reshape(-1, 3)])
+    bgc = np.median(corners, axis=0)
+    near = np.abs(rgb - bgc).max(axis=2) <= 22
+    lab, n = ndimage.label(holes)
+    clear = np.zeros_like(holes)
+    for i in range(1, n + 1):
+        m = lab == i
+        if near[m].mean() > 0.8: clear |= m
+    fill = fl & ~clear
+    na = np.where(ndimage.binary_erosion(fill, iterations=4), 255, a)
+    na = np.where(clear, 0, na).astype('uint8')
     o.putalpha(Image.fromarray(na))
     o = o.crop(o.getbbox()); o.thumbnail((1100, 1100), Image.LANCZOS)
     os.makedirs(CUTS, exist_ok=True); o.save(fn, optimize=True)
@@ -290,7 +305,7 @@ def main():
 # ---------- Bestsellery (osobny feed, kafelki v2: same ceny) – Kuba 12.11 ----------
 BEST_COL = env('BEST_COL', 'bestsellery')
 BEST_DIR = os.path.join(ROOT, 'tb')
-DESIGN2 = 'b2'
+DESIGN2 = 'b3'
 
 
 def main_best():
@@ -352,7 +367,7 @@ def main_best():
 # zeby mogl miec inne tlo; oryginalne id zostaje przy pierwszym zestawie (piksel dalej pasuje).
 COMBINE = env('COMBINE', '1') == '1'
 ROPE_COL = env('ROPE_COL', 'rope-laces')
-DESIGN3 = 'r1'
+DESIGN3 = 'r2'
 BG_URLS = {'rope': env('BG_ROPE', 'https://cdn.shopify.com/s/files/1/0672/8604/0731/files/tk-meta-tlo-rope.jpg')}
 
 
