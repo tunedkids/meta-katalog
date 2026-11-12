@@ -24,7 +24,7 @@ A_DIR = os.path.join(ROOT, 'assets')
 CUTS = os.path.join(ROOT, 'cuts')
 TILES = os.path.join(ROOT, 't')
 SHOP = 'https://tunedkids.pl'
-DESIGN = 'v1'  # zmiana wymusza nowe nazwy plikow (Meta pobierze nowe obrazy)
+DESIGN = 'v2'  # zmiana wymusza nowe nazwy plikow (Meta pobierze nowe obrazy)
 
 env = lambda k, d='': os.environ.get(k, d) or d
 COLLECTION = env('COLLECTION', 'air-max-plus')
@@ -242,7 +242,7 @@ def main():
         fn = f"{p['id']}-{h}.jpg"; used.add(fn)
         path = os.path.join(TILES, fn)
         if FORCE or not os.path.exists(path):
-            tile(cut, name, tprice, told).save(path, quality=88, optimize=True, progressive=True); made += 1
+            tile2(cut, tprice, told, True).save(path, quality=88, optimize=True, progressive=True); made += 1
         for s, v in vs:
             price = float(v['price']); old = float(v.get('compare_at_price') or 0)
             disc = old > price + 0.009
