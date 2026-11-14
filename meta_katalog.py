@@ -24,7 +24,7 @@ A_DIR = os.path.join(ROOT, 'assets')
 CUTS = os.path.join(ROOT, 'cuts')
 TILES = os.path.join(ROOT, 't')
 SHOP = 'https://tunedkids.pl'
-DESIGN = 'v3'  # zmiana wymusza nowe nazwy plikow (Meta pobierze nowe obrazy)
+DESIGN = 'v4'  # zmiana wymusza nowe nazwy plikow (Meta pobierze nowe obrazy)
 
 env = lambda k, d='': os.environ.get(k, d) or d
 COLLECTION = env('COLLECTION', 'air-max-plus')
@@ -81,9 +81,14 @@ def size_eu(v):
 
 # ---------- wycinanie ----------
 _sess = None
-def cutout(p):
+ROPE_RE = re.compile(r'rope laces', re.I)
+
+
+def cutout(p, label=''):
     # v2 (12.11): dziury, przez ktore widac tlo zdjecia (np. kolumny Shox), zostaja przezroczyste
-    fn = os.path.join(CUTS, f"v2_{p['id']}.png")
+    # v3 (14.11): tylko dziury w dolnej czesci buta (podeszwa/kolumny); bialy srodek cholewki
+    #   (np. AF1 rope laces) zostaje bialy, zeby nie przeswitywalo tlo kafelka. Rope: bez dziur.
+    fn = os.path.join(CUTS, f"v3_{p['id']}.png")
     if os.path.exists(fn): return Image.open(fn).convert('RGBA')
     global _sess
     from rembg import remove, new_session
@@ -102,9 +107,14 @@ def cutout(p):
     near = np.abs(rgb - bgc).max(axis=2) <= 22
     lab, n = ndimage.label(holes)
     clear = np.zeros_like(holes)
+    ys = np.where(solid.any(axis=1))[0]
+    y0, y1 = (ys[0], ys[-1]) if len(ys) else (0, h)
+    low = y0 + 0.55 * (y1 - y0)
     for i in range(1, n + 1):
+        if label == 'rope' or ROPE_RE.search(p.get('title', '')): break
         m = lab == i
-        if near[m].mean() > 0.8: clear |= m
+        cy = np.where(m)[0].mean()
+        if near[m].mean() > 0.8 and cy >= low: clear |= m
     fill = fl & ~clear
     na = np.where(ndimage.binary_erosion(fill, iterations=4), 255, a)
     na = np.where(clear, 0, na).astype('uint8')
@@ -305,7 +315,7 @@ def main():
 # ---------- Bestsellery (osobny feed, kafelki v2: same ceny) – Kuba 12.11 ----------
 BEST_COL = env('BEST_COL', 'bestsellery')
 BEST_DIR = os.path.join(ROOT, 'tb')
-DESIGN2 = 'b3'
+DESIGN2 = 'b4'
 
 
 def main_best():
@@ -367,7 +377,7 @@ def main_best():
 # zeby mogl miec inne tlo; oryginalne id zostaje przy pierwszym zestawie (piksel dalej pasuje).
 COMBINE = env('COMBINE', '1') == '1'
 ROPE_COL = env('ROPE_COL', 'rope-laces')
-DESIGN3 = 'r2'
+DESIGN3 = 'r3'
 BG_URLS = {'rope': env('BG_ROPE', 'https://cdn.shopify.com/s/files/1/0672/8604/0731/files/tk-meta-tlo-rope.jpg')}
 
 
@@ -378,7 +388,7 @@ def build(col, sub, label, design, bgname, taken, size_filter=True):
     rows, used, made = [], set(), 0
     for p in P:
         try:
-            cut = cutout(p)
+            cut = cutout(p, label)
         except Exception as ex:
             print('  BLAD wycinania', p['title'], ex); continue
         shoe = is_shoe(p)
